@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="screensaver.artsplash" name="Artsplash Screensaver" version="1.0.5" provider-name="plafrance">
-    <requires>
-        <import addon="xbmc.python" version="2.25.0"/>
-    </requires>
-    <extension point="xbmc.ui.screensaver" library="default.py"/>
-    <extension point="xbmc.python.script"  library="default.py"/>
-    <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Art slideshow from the world's greatest museums.</summary>
-        <description lang="en_GB"></description>
-        <license>GNU GENERAL PUBLIC LICENSE. Version 3, June 2007</license>
-        <platform>all</platform>
-        <source>https://github.com/plafrance/artsplash</source>
-        <assets>
-            <icon>resources/images/icon.png</icon>
-            <screenshot>resources/images/screenshot1.jpg</screenshot>
-            <screenshot>resources/images/screenshot2.jpg</screenshot>
-            <screenshot>resources/images/screenshot3.jpg</screenshot>
-        </assets>
-    </extension>
+<addon id="screensaver.artsplash" name="Artsplash Screensaver" version="1.0.6" provider-name="plafrance">
+  <requires>
+    <import addon="xbmc.python" version="2.25.0"/>
+  </requires>
+  <extension point="xbmc.ui.screensaver" library="default.py"/>
+  <extension point="xbmc.python.script"  library="default.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Art slideshow from the world's greatest museums.</summary>
+    <description lang="en_GB"></description>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 3, June 2007</license>
+    <platform>all</platform>
+    <source>https://github.com/plafrance/artsplash</source>
+    <assets>
+      <icon>resources/images/icon.png</icon>
+      <screenshot>resources/images/screenshot1.jpg</screenshot>
+      <screenshot>resources/images/screenshot2.jpg</screenshot>
+      <screenshot>resources/images/screenshot3.jpg</screenshot>
+    </assets>
+  </extension>
 </addon>

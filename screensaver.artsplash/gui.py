@@ -20,6 +20,7 @@
 import urllib, urllib2, socket, random, itertools
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
 import requests, json
+import PIL
 
 class MyMonitor (xbmc.Monitor):
     def __init__(self, callback):
@@ -71,7 +72,7 @@ class GUI(xbmcgui.WindowXMLDialog):
 	    self.IMAGE_URL = 'https://www.rijksmuseum.nl/api/en/collection'
             
         self.object_list=[]
-        self.info=""
+        self.info={}
         self.nextImage=False        
         self.currentID = CYC_CONTROL()
         self.nextID    = CYC_CONTROL()
@@ -109,12 +110,12 @@ class GUI(xbmcgui.WindowXMLDialog):
         if url:
 	    if self.phototype == "Met Museum":
 		    self.log("Trying " + str(url), xbmc.LOGNOTICE)
-		    self.info=data["artistDisplayName"] + "(%s-%s)" % (data["artistBeginDate"], data["artistEndDate"]) if data["artistBeginDate"]!="" else ""
-		    self.info+="\n%s" % (data["title"]) + "(%s)" % (data["objectEndDate"]) if data["objectEndDate"] != "" else ""
+		    self.info["Artist"] = data["artistDisplayName"] + "(%s-%s)" % (data["artistBeginDate"], data["artistEndDate"]) if data["artistBeginDate"]!="" else ""
+		    self.info["Title"] = "%s" % (data["title"]) + "(%s)" % (data["objectEndDate"]) if data["objectEndDate"] != "" else ""
 	    elif self.phototype == "Rijksmuseum":
 		    self.log("Trying " + str(url), xbmc.LOGNOTICE)
-		    self.info=data["principalOrFirstMaker"]
-		    self.info+="\n%s" % (data["title"])
+		    self.info["Artist"] = data["principalOrFirstMaker"]
+		    self.info["Title"] = "%s" % (data["title"])
         else:
 	        self.log("Image not found", xbmc.LOGNOTICE)
 	        return
@@ -127,26 +128,27 @@ class GUI(xbmcgui.WindowXMLDialog):
 
     def startRotation(self):
         while True:
-            self.changerImage()
+            self.rotateImage()
             for i in range( self.settings["TIMER"] * 2):
                 self.KODI_MONITOR.waitForAbort(0.5)
                 if not self.KODI_MONITOR.ss_active() or self.KODI_MONITOR.abortRequested() :
                     return
 
-    def changerImage(self):
+    def rotateImage(self):
         self.nextID    = self.currentID
         self.currentID = CYC_CONTROL()
         try:
             self.setImage(self.currentID)
             self.getControl(self.nextID).setVisible(False)
             self.getControl(self.currentID).setVisible(True)
-            self.getControl(30004).setLabel(self.info)
+            for info in self.info:
+                self.getControl(30004).addLabel(self.info[info])
         except Exception as e:
             self.log(e, xbmc.LOGERROR)
             
     def onAction( self, action ):
         if action.getId() == xbmcgui.ACTION_MOVE_RIGHT:
-            self.changerImage()
+            self.rotateImage()
         else:
             self.terminer()
 
