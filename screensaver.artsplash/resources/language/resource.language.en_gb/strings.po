@@ -32,6 +32,22 @@ msgctxt "#32005"
 msgid "Source Museum"
 msgstr ""
 
+msgctxt "#32015"
+msgid "Crop border"
+msgstr ""
+
+msgctxt "#32016"
+msgid "Matte width"
+msgstr ""
+
+msgctxt "#32017"
+msgid "Real size"
+msgstr ""
+
+msgctxt "#32018"
+msgid "Screen diagonal size"
+msgstr ""
+
 msgctxt "#32006"
 msgid "Enable Keywords"
 msgstr ""

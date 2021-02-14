@@ -17,10 +17,14 @@
 # You should have received a copy of the GNU General Public License
 # along with ArtsplashScreenSaver.  If not, see <http://www.gnu.org/licenses/>.
 
+import math
 import urllib, urllib2, socket, random, itertools
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
 import requests, json
-import PIL
+from PIL import Image, ImageDraw
+import os
+import time
+import random
 
 class MyMonitor (xbmc.Monitor):
     def __init__(self, callback):
@@ -60,8 +64,12 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.settings["DATE_BEG"]       = REAL_SETTINGS.getSetting('DateBegin')
         self.settings["DATE_END"]       = REAL_SETTINGS.getSetting('DateEnd')
         self.settings["DEPARTMENTID"]   = REAL_SETTINGS.getSetting('DepartmentId')
-        self.settings["TIMER"]          = [30,60,120,240][int(REAL_SETTINGS.getSetting("RotateTime"))]
-        self.settings["RES"]            = ['1280x720','1920x1080','3840x2160'][int(REAL_SETTINGS.getSetting("Resolution"))]
+        self.settings["TIMER"]          = [120,300,600,1800,3600,7200,18000,43200,86400][int(REAL_SETTINGS.getSetting("RotateTime"))]
+        self.settings["RES"]            = [(1280, 720),(1920, 1080),(3840, 2160)][int(REAL_SETTINGS.getSetting("Resolution"))]
+        self.settings["MATTE"]          = int(REAL_SETTINGS.getSetting("MatteSize"))
+        self.settings["CROP_PCT"]       = int(REAL_SETTINGS.getSetting("CropSize"))/100.0
+        self.settings["REAL_SIZE"]      = REAL_SETTINGS.getSetting("RealSize") == 'true'
+        self.settings["SCREEN_SIZE"]    = int(REAL_SETTINGS.getSetting("ScreenSize"))
 
         self.phototype = ['Met Museum', 'Rijksmuseum'][int(REAL_SETTINGS.getSetting("PhotoType"))]
         self.url_params     = '/%s'%self.phototype
@@ -75,7 +83,6 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.info={}
         self.nextImage=False        
         self.currentID = CYC_CONTROL()
-        self.nextID    = CYC_CONTROL()
 
         self.KODI_MONITOR   = MyMonitor( self.terminer )
 
@@ -94,7 +101,6 @@ class GUI(xbmcgui.WindowXMLDialog):
             except Exception as e:
                 self.log(e, xbmc.LOGERROR)
             
-        self.log("INIT", xbmc.LOGERROR)
         self.winid = xbmcgui.Window(xbmcgui.getCurrentWindowDialogId())
         self.winid.setProperty('artsplash_animation', self.settings["ANIMATION"])
         self.winid.setProperty('artsplash_time', self.settings["TIME"])
@@ -102,30 +108,137 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.startRotation()
 
     def setImage(self, id):
-        self.log("SetImage:"+str(id), xbmc.LOGERROR)
+        self.log("SetImage:"+str(id), xbmc.LOGNOTICE)
         url=None
 
         url,data=self.getRandomImage()
 
         if url:
 	    if self.phototype == "Met Museum":
-		    self.log("Trying " + str(url), xbmc.LOGNOTICE)
 		    self.info["Artist"] = data["artistDisplayName"] + "(%s-%s)" % (data["artistBeginDate"], data["artistEndDate"]) if data["artistBeginDate"]!="" else ""
 		    self.info["Title"] = "%s" % (data["title"]) + "(%s)" % (data["objectEndDate"]) if data["objectEndDate"] != "" else ""
+
+                    if self.settings["REAL_SIZE"] :
+                        mesures = [ m for m in data['measurements'] if m['elementName']=="Overall" ]
+                        
+                        if len(mesures)>0:
+                            self.mesures = float(mesures[0]['elementMeasurements']['Height'])
+                            
+
 	    elif self.phototype == "Rijksmuseum":
-		    self.log("Trying " + str(url), xbmc.LOGNOTICE)
 		    self.info["Artist"] = data["principalOrFirstMaker"]
 		    self.info["Title"] = "%s" % (data["title"])
         else:
-	        self.log("Image not found", xbmc.LOGNOTICE)
+	        self.log("Image not found", xbmc.LOGERROR)
 	        return
 
-        image = self.openURL(url)
-        image = image if len(image) > 0 else self.openURL(url)
+	self.log("Trying " + str(url), xbmc.LOGNOTICE)
+        url_image = self.openURL(url)
+        url_image = url_image if len(url_image) > 0 else self.openURL(url)
 
-        self.getControl(id).setImage(image)
+        filename = self.traiter_image( url_image )
+
+        self.getControl(id).setImage(filename)
+        self.getControl(30004).setLabel( (self.info["Artist"] if "Artist" in self.info else "") + "\n" + (self.info["Title"] if "Title" in self.info else "") )
+
+    def traiter_image( self, url_image ):
+        crop_pct = self.settings["CROP_PCT"]
+        image = Image.open(urllib2.urlopen(url_image))
+        filename = "/tmp/artsplash_temp" + str(time.time()) + ".png"
+
+        w_final = self.settings["RES"][0]
+        h_final = self.settings["RES"][1]
+
+        w_biseau = 8
+        w_matte_int = 40
+        w_matte_ext = self.settings["MATTE"]-2*(w_biseau+w_matte_int)
+
+        sample = image.resize( (16,16) )
+        colors = sample.getcolors()
+        c=(sum([s[1][0] for s in colors])/len(colors), sum([s[1][1] for s in colors])/len(colors), sum([s[1][2] for s in colors])/len(colors) )
+        c=darken(c, 0.5)
         
+        ratio = float(image.height)/image.width
+        if ratio > 1 : #portrait
+            image_out = Image.new( "RGB", (int((h_final-2*w_matte_ext)/ratio)+2*w_matte_ext, h_final) )
+        else: # paysage
+            image_out = Image.new( "RGB", (w_final, int((w_final-2*w_matte_ext)*ratio)+2*w_matte_ext ) )
+            
+        draw = ImageDraw.Draw( image_out )
 
+        c_haut = darken(c, 0.8)
+        c_gauche = darken(c, 0.9)
+        c_droite = darken(c, 1.2)
+        c_bas = darken(c, 1.3)
+
+        couleurs=[darken(c, 1-x/100.0) for x in range( -3, 4 )]
+
+        for x in range(image_out.width):
+            for y in range(w_matte_ext):
+                image_out.putpixel((x, y), random.choice(couleurs))
+                image_out.putpixel((x, image_out.height-1-y), random.choice(couleurs))
+        for x in range(w_matte_ext):
+            for y in range(image_out.height):
+                image_out.putpixel((x, y), random.choice(couleurs))
+                image_out.putpixel((image_out.width-1-x, y), random.choice(couleurs))
+        
+        #Haut
+        draw.polygon(((w_matte_ext-w_biseau, w_matte_ext-w_biseau),
+                      (image_out.height/2, image_out.height/2),
+                      (image_out.width-image_out.height/2,  image_out.height/2),
+                      (image_out.width-(w_matte_ext-w_biseau), w_matte_ext-w_biseau)), fill=c_haut)
+
+        draw.polygon(((0, 0),
+                      (image_out.height/2, image_out.height/2),
+                      (image_out.width-image_out.height/2,  image_out.height/2),
+                      (image_out.width, 0)), fill=None, outline="black")
+        
+        #Bas
+        draw.polygon(((w_matte_ext-w_biseau, image_out.height-(w_matte_ext-w_biseau)),
+                      (image_out.height/2, image_out.height/2),
+                      (image_out.width-image_out.height/2,  image_out.height/2),
+                      (image_out.width-(w_matte_ext-w_biseau), image_out.height-(w_matte_ext-w_biseau))), fill=c_bas)
+
+        draw.polygon(((0, image_out.height),
+                      (image_out.height/2, image_out.height/2),
+                      (image_out.width-image_out.height/2,  image_out.height/2),
+                      ((image_out.width, image_out.height))), fill=None, outline="black")
+        
+        #Gauche
+        draw.polygon(((w_matte_ext-w_biseau, w_matte_ext-w_biseau),
+                      (image_out.height/2, image_out.height/2),
+                      (image_out.height/2,  image_out.height/2),
+                      (w_matte_ext-w_biseau, image_out.height-(w_matte_ext-w_biseau))), fill=c_gauche)
+
+        #Droite
+        draw.polygon(((image_out.width-(w_matte_ext-w_biseau), w_matte_ext-w_biseau),
+                      (image_out.width-image_out.height/2, image_out.height/2),
+                      (image_out.width-image_out.height/2,  image_out.height/2),
+                      (image_out.width-(w_matte_ext-w_biseau), image_out.height-(w_matte_ext-w_biseau))), fill=c_droite)
+
+        
+        crop_pxl = int( min( image.size )*crop_pct )
+
+        if self.settings["REAL_SIZE"] and self.mesures:
+            h_screen=(self.settings["SCREEN_SIZE"]**2/4.16)**0.5*2.54
+            screen_to_image_ratio = float(min(h_screen, self.mesures))/h_screen
+            out_box = [int(screen_to_image_ratio*d) for d in image_out.size]
+        else:
+            out_box = [d-2*w_matte_ext-2*w_matte_int for d in image_out.size]
+
+        #draw.rectangle( (w_matte_ext+w_biseau, w_matte_ext+w_biseau, image_out.width-w_matte_ext-w_biseau, image_out.height-w_matte_ext-w_biseau), fill = couleurs[0] )
+        #draw.rectangle ( ( (image_out.width-out_box[0])/2-w_biseau, (image_out.height-out_box[1])/2-w_biseau, (image_out.width+out_box[0])/2+2*w_biseau, (image_out.height+out_box[1])/2+2*w_biseau ), fill=couleurs[0] )
+        draw.rectangle (( w_matte_ext+w_biseau, w_matte_ext+w_biseau, image_out.width-(w_matte_ext+w_biseau), image_out.height-(w_matte_ext+w_biseau) ), darken(c, 8) )
+        image = image.resize ( out_box,
+                               box=(crop_pxl,
+                                    crop_pxl,
+                                    image.width-crop_pxl,
+                                    image.height-crop_pxl))
+        image_out.paste( image, box=((image_out.width-out_box[0])/2, (image_out.height-out_box[1])/2)) #w_matte_ext+w_matte_int,  w_matte_ext+w_matte_int) )
+        image_out.save(filename, format="png")
+
+        return filename
+    
     def startRotation(self):
         while True:
             self.rotateImage()
@@ -135,14 +248,13 @@ class GUI(xbmcgui.WindowXMLDialog):
                     return
 
     def rotateImage(self):
-        self.nextID    = self.currentID
+        lastID    = self.currentID
         self.currentID = CYC_CONTROL()
         try:
             self.setImage(self.currentID)
-            self.getControl(self.nextID).setVisible(False)
+            self.getControl(lastID).setVisible(False)
             self.getControl(self.currentID).setVisible(True)
-            for info in self.info:
-                self.getControl(30004).addLabel(self.info[info])
+
         except Exception as e:
             self.log(e, xbmc.LOGERROR)
             
@@ -158,11 +270,10 @@ class GUI(xbmcgui.WindowXMLDialog):
 	        url=self.IMAGE_URL+"objects/"+str(self.object_list[random.randrange(len(self.object_list))])
 	        
 	        data=get_url(url)
-	            
-	        if "primaryImageSmall" in data:
-	            url_image=data["primaryImageSmall"]
-	        elif "primaryImage" in data:
+	        if "primaryImage" in data:
 	            url_image=data["primaryImage"]
+	        elif "primaryImageSmall" in data:
+	            url_image=data["primaryImageSmall"]
 	        else:
 	            url_image=None
 	        
@@ -202,15 +313,60 @@ class GUI(xbmcgui.WindowXMLDialog):
 
             
     def openURL(self, url):
-        self.log("openURL url = " + url)
         request = urllib2.Request(url)
         request.add_header('User-Agent', USER_AGENT)
         page = urllib2.urlopen(request, timeout = 15)
         url = page.geturl()
-        self.log("openURL return url = " + url)
         return url
 
 def get_url(url):
     headers = {'User-Agent': USER_AGENT}
     response=requests.get(url, headers=headers)
     return json.loads(response.text)
+
+def rgb_to_hsv(params):
+    r, g, b = params
+    r = float(r)
+    g = float(g)
+    b = float(b)
+    high = max(r, g, b)
+    low = min(r, g, b)
+    h, s, v = high, high, high
+
+    d = high - low
+    s = 0 if high == 0 else d/high
+
+    if high == low:
+        h = 0.0
+    else:
+        h = {
+            r: (g - b) / d + (6 if g < b else 0),
+            g: (b - r) / d + 2,
+            b: (r - g) / d + 4,
+        }[high]
+        h /= 6
+
+    return h, s, v
+
+def hsv_to_rgb(params):
+    h, s, v = params
+    i = math.floor(h*6)
+    f = h*6 - i
+    p = v * (1-s)
+    q = v * (1-f*s)
+    t = v * (1-(1-f)*s)
+
+    r, g, b = [
+        (v, t, p),
+        (q, v, p),
+        (p, v, t),
+        (p, q, v),
+        (t, p, v),
+        (v, p, q),
+    ][int(i%6)]
+
+    return tuple(int(x) for x in [r, g, b])
+
+def darken(c, p=1):
+    c_or=rgb_to_hsv(c)
+    return hsv_to_rgb((c_or[0], c_or[1], c_or[2]*p))
