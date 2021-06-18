@@ -18,13 +18,14 @@
 # along with ArtsplashScreenSaver.  If not, see <http://www.gnu.org/licenses/>.
 
 import math
-import urllib, urllib2, socket, random, itertools
+import urllib.parse, urllib.request, random, itertools
 import xbmc, xbmcaddon, xbmcvfs, xbmcgui
 import requests, json
 from PIL import Image, ImageDraw
 import os
 import time
 import random
+import traceback
 
 class MyMonitor (xbmc.Monitor):
     def __init__(self, callback):
@@ -44,8 +45,8 @@ ADDON_ID       = 'screensaver.artsplash'
 REAL_SETTINGS  = xbmcaddon.Addon(id=ADDON_ID)
 ADDON_NAME     = REAL_SETTINGS.getAddonInfo('name')
 ADDON_VERSION  = REAL_SETTINGS.getAddonInfo('version')
-ADDON_PATH     = (REAL_SETTINGS.getAddonInfo('path').decode('utf-8'))
-SETTINGS_LOC   = REAL_SETTINGS.getAddonInfo('profile').decode('utf-8')
+ADDON_PATH     = REAL_SETTINGS.getAddonInfo('path')
+SETTINGS_LOC   = REAL_SETTINGS.getAddonInfo('profile')
 
 IMG_CONTROLS   = [30000,30001]
 try: CYC_CONTROL    = itertools.cycle(IMG_CONTROLS).__next__
@@ -60,7 +61,7 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.settings["TIME"]           = str(REAL_SETTINGS.getSetting("Time") == 'true')
         self.settings["OVERLAY"]        = str(REAL_SETTINGS.getSetting("Overlay") == 'true')
         self.settings["ENABLE_KEYS"]    = str(REAL_SETTINGS.getSetting("Enable_Keys") == 'true')
-        self.settings["KEYWORDS"]       = urllib.quote(REAL_SETTINGS.getSetting("Keywords").encode("utf-8"))
+        self.settings["KEYWORDS"]       = urllib.parse.quote(REAL_SETTINGS.getSetting("Keywords").encode("utf-8"))
         self.settings["DATE_BEG"]       = REAL_SETTINGS.getSetting('DateBegin')
         self.settings["DATE_END"]       = REAL_SETTINGS.getSetting('DateEnd')
         self.settings["DEPARTMENTID"]   = REAL_SETTINGS.getSetting('DepartmentId')
@@ -68,7 +69,7 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.settings["RES"]            = [(1280, 720),(1920, 1080),(3840, 2160)][int(REAL_SETTINGS.getSetting("Resolution"))]
         self.settings["MATTE"]          = int(REAL_SETTINGS.getSetting("MatteSize"))
         self.settings["CROP_PCT"]       = int(REAL_SETTINGS.getSetting("CropSize"))/100.0
-        self.settings["REAL_SIZE"]      = REAL_SETTINGS.getSetting("RealSize") == 'true'
+        self.settings["REAL_SIZE"]      = int(REAL_SETTINGS.getSetting("RealSize")) == 0
         self.settings["SCREEN_SIZE"]    = int(REAL_SETTINGS.getSetting("ScreenSize"))
 
         self.phototype = ['Met Museum', 'Rijksmuseum'][int(REAL_SETTINGS.getSetting("PhotoType"))]
@@ -77,7 +78,7 @@ class GUI(xbmcgui.WindowXMLDialog):
         if self.phototype == "Met Museum":
             self.IMAGE_URL = 'https://collectionapi.metmuseum.org/public/collection/v1/'
         elif self.phototype == "Rijksmuseum":
-	    self.IMAGE_URL = 'https://www.rijksmuseum.nl/api/en/collection'
+            self.IMAGE_URL = 'https://www.rijksmuseum.nl/api/en/collection'
             
         self.object_list=[]
         self.info={}
@@ -90,14 +91,14 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.close()
         
     def log(self, msg, level=xbmc.LOGDEBUG):
-        xbmc.log((ADDON_ID + '-' + ADDON_VERSION + '-' + str(msg)).decode("utf8"), level)
+        xbmc.log(ADDON_ID + '-' + ADDON_VERSION + '-' + str(msg), level)
             
             
     def onInit( self ):
         if  self.object_list==[] :
             try:
                 self.object_list=self.getObjectList()
-                self.log("Found "+str(len(self.object_list))+" objects", xbmc.LOGNOTICE)
+                self.log("Found "+str(len(self.object_list))+" objects", xbmc.LOGDEBUG)
             except Exception as e:
                 self.log(e, xbmc.LOGERROR)
             
@@ -108,31 +109,33 @@ class GUI(xbmcgui.WindowXMLDialog):
         self.startRotation()
 
     def setImage(self, id):
-        self.log("SetImage:"+str(id), xbmc.LOGNOTICE)
+        self.log("SetImage:"+str(id), xbmc.LOGDEBUG)
         url=None
 
         url,data=self.getRandomImage()
 
         if url:
-	    if self.phototype == "Met Museum":
-		    self.info["Artist"] = data["artistDisplayName"] + "(%s-%s)" % (data["artistBeginDate"], data["artistEndDate"]) if data["artistBeginDate"]!="" else ""
-		    self.info["Title"] = "%s" % (data["title"]) + "(%s)" % (data["objectEndDate"]) if data["objectEndDate"] != "" else ""
+            if self.phototype == "Met Museum":
+                    self.info["Artist"] = data["artistDisplayName"] + "(%s-%s)" % (data["artistBeginDate"], data["artistEndDate"]) if data["artistBeginDate"]!="" else ""
+                    self.info["Title"] = "%s" % (data["title"]) + "(%s)" % (data["objectEndDate"]) if data["objectEndDate"] != "" else ""
 
                     if self.settings["REAL_SIZE"] :
                         mesures = [ m for m in data['measurements'] if m['elementName']=="Overall" ]
                         
                         if len(mesures)>0:
                             self.mesures = float(mesures[0]['elementMeasurements']['Height'])
+                        else:
+                            self.mesures = None
                             
 
-	    elif self.phototype == "Rijksmuseum":
-		    self.info["Artist"] = data["principalOrFirstMaker"]
-		    self.info["Title"] = "%s" % (data["title"])
+            elif self.phototype == "Rijksmuseum":
+                    self.info["Artist"] = data["principalOrFirstMaker"]
+                    self.info["Title"] = "%s" % (data["title"])
         else:
-	        self.log("Image not found", xbmc.LOGERROR)
-	        return
+                self.log("Image not found", xbmc.LOGERROR)
+                return
 
-	self.log("Trying " + str(url), xbmc.LOGNOTICE)
+        self.log("Trying " + str(url), xbmc.LOGDEBUG)
         url_image = self.openURL(url)
         url_image = url_image if len(url_image) > 0 else self.openURL(url)
 
@@ -143,7 +146,9 @@ class GUI(xbmcgui.WindowXMLDialog):
 
     def traiter_image( self, url_image ):
         crop_pct = self.settings["CROP_PCT"]
-        image = Image.open(urllib2.urlopen(url_image))
+        self.log("URL" + url_image, xbmc.LOGDEBUG)
+        image = Image.open(urllib.request.urlopen(url_image))
+        self.log("IMAGE" + str(image), xbmc.LOGDEBUG)
         filename = "/tmp/artsplash_temp" + str(time.time()) + ".png"
 
         w_final = self.settings["RES"][0]
@@ -155,15 +160,16 @@ class GUI(xbmcgui.WindowXMLDialog):
 
         sample = image.resize( (16,16) )
         colors = sample.getcolors()
-        c=(sum([s[1][0] for s in colors])/len(colors), sum([s[1][1] for s in colors])/len(colors), sum([s[1][2] for s in colors])/len(colors) )
-        c=darken(c, 0.5)
+        c=hsv_to_rgb(max([ rgb_to_hsv(c[1]) for c in colors], key=lambda x : x[1]))
+
+        #c=(sum([s[1][0] for s in colors])/len(colors), sum([s[1][1] for s in colors])/len(colors), sum([s[1][2] for s in colors])/len(colors) )
         
         ratio = float(image.height)/image.width
-        if ratio > 1 : #portrait
-            image_out = Image.new( "RGB", (int((h_final-2*w_matte_ext)/ratio)+2*w_matte_ext, h_final) )
-        else: # paysage
+        if ratio < 0.5625 : #16/9 et plus large
             image_out = Image.new( "RGB", (w_final, int((w_final-2*w_matte_ext)*ratio)+2*w_matte_ext ) )
-            
+        else:
+            image_out = Image.new( "RGB", (int((h_final-2*w_matte_ext)/ratio)+2*w_matte_ext, h_final) )
+
         draw = ImageDraw.Draw( image_out )
 
         c_haut = darken(c, 0.8)
@@ -222,21 +228,18 @@ class GUI(xbmcgui.WindowXMLDialog):
         if self.settings["REAL_SIZE"] and self.mesures:
             h_screen=(self.settings["SCREEN_SIZE"]**2/4.16)**0.5*2.54
             screen_to_image_ratio = float(min(h_screen, self.mesures))/h_screen
-            out_box = [int(screen_to_image_ratio*d) for d in image_out.size]
-        else:
+            out_box = [min(d-2*w_matte_ext-2*w_matte_int, int(screen_to_image_ratio*d) ) for d in image_out.size]
+        else :
             out_box = [d-2*w_matte_ext-2*w_matte_int for d in image_out.size]
 
-        #draw.rectangle( (w_matte_ext+w_biseau, w_matte_ext+w_biseau, image_out.width-w_matte_ext-w_biseau, image_out.height-w_matte_ext-w_biseau), fill = couleurs[0] )
-        #draw.rectangle ( ( (image_out.width-out_box[0])/2-w_biseau, (image_out.height-out_box[1])/2-w_biseau, (image_out.width+out_box[0])/2+2*w_biseau, (image_out.height+out_box[1])/2+2*w_biseau ), fill=couleurs[0] )
-        draw.rectangle (( w_matte_ext+w_biseau, w_matte_ext+w_biseau, image_out.width-(w_matte_ext+w_biseau), image_out.height-(w_matte_ext+w_biseau) ), darken(c, 8) )
+        draw.rectangle (( w_matte_ext+w_biseau, w_matte_ext+w_biseau, image_out.width-(w_matte_ext+w_biseau), image_out.height-(w_matte_ext+w_biseau) ), "white" )
         image = image.resize ( out_box,
                                box=(crop_pxl,
                                     crop_pxl,
                                     image.width-crop_pxl,
                                     image.height-crop_pxl))
-        image_out.paste( image, box=((image_out.width-out_box[0])/2, (image_out.height-out_box[1])/2)) #w_matte_ext+w_matte_int,  w_matte_ext+w_matte_int) )
+        image_out.paste( image, box=(int((image_out.width-out_box[0])/2), int((image_out.height-out_box[1])/2)))
         image_out.save(filename, format="png")
-
         return filename
     
     def startRotation(self):
@@ -256,7 +259,7 @@ class GUI(xbmcgui.WindowXMLDialog):
             self.getControl(self.currentID).setVisible(True)
 
         except Exception as e:
-            self.log(e, xbmc.LOGERROR)
+            self.log(traceback.format_exc(), xbmc.LOGERROR)
             
     def onAction( self, action ):
         if action.getId() == xbmcgui.ACTION_MOVE_RIGHT:
@@ -266,58 +269,57 @@ class GUI(xbmcgui.WindowXMLDialog):
 
     def getRandomImage(self):
 
-	if self.phototype == "Met Museum":
-	        url=self.IMAGE_URL+"objects/"+str(self.object_list[random.randrange(len(self.object_list))])
-	        
-	        data=get_url(url)
-	        if "primaryImage" in data:
-	            url_image=data["primaryImage"]
-	        elif "primaryImageSmall" in data:
-	            url_image=data["primaryImageSmall"]
-	        else:
-	            url_image=None
-	        
-	elif self.phototype == "Rijksmuseum":
+        if self.phototype == "Met Museum":
+                url=self.IMAGE_URL+"objects/"+str(self.object_list[random.randrange(len(self.object_list))])
+                
+                data=get_url(url)
+                if "primaryImage" in data:
+                    url_image=data["primaryImage"]
+                elif "primaryImageSmall" in data:
+                    url_image=data["primaryImageSmall"]
+                else:
+                    url_image=None
+                
+        elif self.phototype == "Rijksmuseum":
 
-		data=self.object_list[random.randrange(len(self.object_list))]
-		if "webImage" in data :
-			url_image=data["webImage"]["url"]
-		elif "headerImage" in data:
-			url_image=data["headerImage"]["url"]
-		else:
-			url_image=None
+                data=self.object_list[random.randrange(len(self.object_list))]
+                if "webImage" in data :
+                        url_image=data["webImage"]["url"]
+                elif "headerImage" in data:
+                        url_image=data["headerImage"]["url"]
+                else:
+                        url_image=None
 
-	return url_image, data
+        return url_image, data
 
     def getObjectList(self):
-	if self.phototype == "Met Museum" :
-		self.log("Dept ID: "+str(self.settings["DEPARTMENTID"]), xbmc.LOGNOTICE)
-		if self.settings["DEPARTMENTID"]=="0":
-		    url=self.IMAGE_URL+ 'search?hasImages=true&dateBegin=%s&dateEnd=%s&q=*'%(self.settings["DATE_BEG"], self.settings["DATE_END"])
-		else:
-		    url=self.IMAGE_URL+ 'search?hasImages=true&departmentId=%s&dateBegin=%s&dateEnd=%s&q=*'%(self.settings["DEPARTMENTID"], self.settings["DATE_BEG"], self.settings["DATE_END"])
-		
-		self.log("Trying : " + url, xbmc.LOGNOTICE)
-		
-		data=get_url(url)
-		return data["objectIDs"]
-		
-	elif self.phototype == "Rijksmuseum" :
-		url=self.IMAGE_URL+ '?key=79QWT4ub&imgonly=True&ps=100&type=painting'
-		
-		self.log("Trying : " + url, xbmc.LOGNOTICE)
-		
-		data=get_url(url)
-		return data["artObjects"]
-		
+        if self.phototype == "Met Museum" :
+                self.log("Dept ID: "+str(self.settings["DEPARTMENTID"]), xbmc.LOGDEBUG)
+                if self.settings["DEPARTMENTID"]=="0":
+                    url=self.IMAGE_URL+ 'search?hasImages=true&dateBegin=%s&dateEnd=%s&q=*'%(self.settings["DATE_BEG"], self.settings["DATE_END"])
+                else:
+                    url=self.IMAGE_URL+ 'search?hasImages=true&departmentId=%s&dateBegin=%s&dateEnd=%s&q=*'%(self.settings["DEPARTMENTID"], self.settings["DATE_BEG"], self.settings["DATE_END"])
+                
+                self.log("Trying : " + url, xbmc.LOGDEBUG)
+                
+                data=get_url(url)
+                return data["objectIDs"]
+                
+        elif self.phototype == "Rijksmuseum" :
+                url=self.IMAGE_URL+ '?key=79QWT4ub&imgonly=True&ps=100&type=painting'
+                
+                self.log("Trying : " + url, xbmc.LOGDEBUG)
+                
+                data=get_url(url)
+                return data["artObjects"]
+                
 
             
     def openURL(self, url):
-        request = urllib2.Request(url)
-        request.add_header('User-Agent', USER_AGENT)
-        page = urllib2.urlopen(request, timeout = 15)
-        url = page.geturl()
-        return url
+        hdr = {'User-Agent': USER_AGENT}
+        rep = requests.get( url, headers=hdr)
+        
+        return rep.url
 
 def get_url(url):
     headers = {'User-Agent': USER_AGENT}

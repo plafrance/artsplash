@@ -41,11 +41,11 @@ msgid "Matte width"
 msgstr ""
 
 msgctxt "#32017"
-msgid "Real size"
+msgid "Max size"
 msgstr ""
 
 msgctxt "#32018"
-msgid "Screen diagonal size"
+msgid "Screen diagonal (inches)"
 msgstr ""
 
 msgctxt "#32006"

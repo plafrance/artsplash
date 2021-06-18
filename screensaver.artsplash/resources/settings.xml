@@ -5,8 +5,8 @@
     <setting id="Time"         type="bool"   label="32004" default="true"/>
     <setting id="Overlay"      type="bool"   label="32011" default="true"/>
     <setting id="Resolution"   type="enum"   label="32010" default="1"           values="1280x720|1920x1080|3840x2160"/>
-    <setting id="RealSize"     type="bool"   label="32017" default="0"/>
-	<setting id="ScreenSize"   type="slider" label="32018" default="55" range="15, 5, 150" option="int" visible="eq(-1,true)"/>
+    <setting id="RealSize"     type="enum"   label="32017" default="0" values="Real size|Screen size"/>
+	<setting id="ScreenSize"   type="slider" label="32018" default="55" range="15, 5, 150" option="int" visible="eq(-1,0)" subsetting="true"/>
 	<setting id="MatteSize"    type="slider" label="32016" default="100" range="0,50,500" option="int"/>
 	<setting id="CropSize"     type="slider" label="32015" default="0" range="0,1,100" option="percent"          />
 
